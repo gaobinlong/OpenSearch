@@ -46,18 +46,11 @@ import org.opensearch.action.admin.indices.cache.clear.ClearIndicesCacheResponse
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.admin.indices.flush.FlushRequest;
 import org.opensearch.action.admin.indices.flush.FlushResponse;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse;
-import org.opensearch.action.admin.indices.open.OpenIndexRequest;
-import org.opensearch.action.admin.indices.open.OpenIndexResponse;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.admin.indices.refresh.RefreshResponse;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsRequest;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsResponse;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
-import org.opensearch.action.admin.indices.shrink.ResizeRequest;
-import org.opensearch.action.admin.indices.shrink.ResizeResponse;
-import org.opensearch.action.admin.indices.shrink.ResizeType;
 import org.opensearch.action.admin.indices.template.delete.DeleteIndexTemplateRequest;
 import org.opensearch.action.admin.indices.validate.query.ValidateQueryRequest;
 import org.opensearch.action.admin.indices.validate.query.ValidateQueryResponse;
@@ -81,6 +74,8 @@ import org.opensearch.client.indices.DataStreamsStatsResponse.DataStreamStats;
 import org.opensearch.client.indices.DeleteAliasRequest;
 import org.opensearch.client.indices.DeleteComposableIndexTemplateRequest;
 import org.opensearch.client.indices.DeleteDataStreamRequest;
+import org.opensearch.client.indices.ForceMergeRequest;
+import org.opensearch.client.indices.ForceMergeResponse;
 import org.opensearch.client.indices.GetComposableIndexTemplateRequest;
 import org.opensearch.client.indices.GetComposableIndexTemplatesResponse;
 import org.opensearch.client.indices.GetDataStreamRequest;
@@ -95,13 +90,18 @@ import org.opensearch.client.indices.GetMappingsRequest;
 import org.opensearch.client.indices.GetMappingsResponse;
 import org.opensearch.client.indices.IndexTemplateMetadata;
 import org.opensearch.client.indices.IndexTemplatesExistRequest;
+import org.opensearch.client.indices.OpenIndexRequest;
+import org.opensearch.client.indices.OpenIndexResponse;
 import org.opensearch.client.indices.PutComposableIndexTemplateRequest;
 import org.opensearch.client.indices.PutIndexTemplateRequest;
 import org.opensearch.client.indices.PutMappingRequest;
+import org.opensearch.client.indices.ResizeRequest;
+import org.opensearch.client.indices.ResizeResponse;
 import org.opensearch.client.indices.SimulateIndexTemplateRequest;
 import org.opensearch.client.indices.SimulateIndexTemplateResponse;
 import org.opensearch.client.indices.rollover.RolloverRequest;
 import org.opensearch.client.indices.rollover.RolloverResponse;
+import org.opensearch.client.tasks.TaskSubmissionResponse;
 import org.opensearch.cluster.metadata.AliasMetadata;
 import org.opensearch.cluster.metadata.ComposableIndexTemplate;
 import org.opensearch.cluster.metadata.IndexMetadata;
@@ -747,6 +747,26 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
         assertEquals(RestStatus.NOT_FOUND, strictException.status());
     }
 
+    public void testSubmitOpenTask() throws Exception {
+        String index = "index";
+        createIndex(index, Settings.EMPTY);
+        closeIndex(index);
+        ResponseException exception = expectThrows(
+            ResponseException.class,
+            () -> client().performRequest(new Request(HttpGet.METHOD_NAME, index + "/_search"))
+        );
+        assertEquals(exception.getResponse().getStatusLine().getStatusCode(), RestStatus.BAD_REQUEST.getStatus());
+        assertTrue(exception.getMessage().contains(index));
+
+        OpenIndexRequest openIndexRequest = new OpenIndexRequest(index);
+        openIndexRequest.setTaskExecutionTimeout(TimeValue.timeValueMinutes(1));
+
+        TaskSubmissionResponse shrinkSubmission = highLevelClient().indices().submitOpenTask(openIndexRequest, RequestOptions.DEFAULT);
+
+        String taskId = shrinkSubmission.getTask();
+        assertBusy(checkTaskCompletionStatus(client(), taskId));
+    }
+
     public void testCloseExistingIndex() throws IOException {
         final String[] indices = new String[randomIntBetween(1, 5)];
         for (int i = 0; i < indices.length; i++) {
@@ -895,12 +915,12 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
                 highLevelClient().indices()::forcemerge,
                 highLevelClient().indices()::forcemergeAsync
             );
-            assertThat(forceMergeResponse.getTotalShards(), equalTo(1));
-            assertThat(forceMergeResponse.getSuccessfulShards(), equalTo(1));
-            assertThat(forceMergeResponse.getFailedShards(), equalTo(0));
-            assertThat(forceMergeResponse.getShardFailures(), equalTo(BroadcastResponse.EMPTY));
+            assertEquals(forceMergeResponse.shards().total(), 1);
+            assertEquals(forceMergeResponse.shards().successful(), 1);
+            assertEquals(forceMergeResponse.shards().failed(), 0);
+            assertTrue(forceMergeResponse.shards().failures().isEmpty());
 
-            assertThat(forceMergeRequest.getDescription(), containsString(index));
+            assertTrue(forceMergeRequest.getDescription().contains(index));
         }
         {
             String nonExistentIndex = "non_existent_index";
@@ -912,8 +932,22 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
             );
             assertEquals(RestStatus.NOT_FOUND, exception.status());
 
-            assertThat(forceMergeRequest.getDescription(), containsString(nonExistentIndex));
+            assertTrue(forceMergeRequest.getDescription().contains(nonExistentIndex));
         }
+    }
+
+    public void testSubmitForceMergeTask() throws Exception {
+
+        String index = "index";
+        Settings settings = Settings.builder().put("number_of_shards", 1).put("number_of_replicas", 0).build();
+        createIndex(index, settings);
+        ForceMergeRequest forceMergeRequest = new ForceMergeRequest(index);
+
+        TaskSubmissionResponse shrinkSubmission = highLevelClient().indices()
+            .submitForcemergeTask(forceMergeRequest, RequestOptions.DEFAULT);
+
+        String taskId = shrinkSubmission.getTask();
+        assertBusy(checkTaskCompletionStatus(client(), taskId));
     }
 
     public void testExistsAlias() throws IOException {
@@ -943,15 +977,12 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
         );
 
         ResizeRequest resizeRequest = new ResizeRequest("target", "source");
-        resizeRequest.setResizeType(ResizeType.SHRINK);
         Settings targetSettings = Settings.builder()
             .put("index.number_of_shards", 2)
             .put("index.number_of_replicas", 0)
             .putNull("index.routing.allocation.require._name")
             .build();
-        resizeRequest.setTargetIndex(
-            new org.opensearch.action.admin.indices.create.CreateIndexRequest("target").settings(targetSettings).alias(new Alias("alias"))
-        );
+        resizeRequest.setSettings(targetSettings).setAliases(List.of(new Alias("alias")));
         ResizeResponse resizeResponse = execute(
             resizeRequest,
             highLevelClient().indices()::shrink,
@@ -969,6 +1000,32 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
     }
 
     @SuppressWarnings("unchecked")
+    public void testSubmitShrinkTask() throws Exception {
+        Map<String, Object> nodes = getAsMap("_nodes");
+        String firstNode = ((Map<String, Object>) nodes.get("nodes")).keySet().iterator().next();
+        createIndex("source", Settings.builder().put("index.number_of_shards", 4).put("index.number_of_replicas", 0).build());
+        updateIndexSettings(
+            "source",
+            Settings.builder().put("index.routing.allocation.require._name", firstNode).put("index.blocks.write", true)
+        );
+
+        ResizeRequest resizeRequest = new ResizeRequest("target", "source");
+
+        Settings targetSettings = Settings.builder()
+            .put("index.number_of_shards", 2)
+            .put("index.number_of_replicas", 0)
+            .putNull("index.routing.allocation.require._name")
+            .build();
+        resizeRequest.setSettings(targetSettings);
+        resizeRequest.setTaskExecutionTimeout(TimeValue.timeValueMinutes(1));
+
+        TaskSubmissionResponse shrinkSubmission = highLevelClient().indices().submitShrinkTask(resizeRequest, RequestOptions.DEFAULT);
+
+        String taskId = shrinkSubmission.getTask();
+        assertBusy(checkTaskCompletionStatus(client(), taskId));
+    }
+
+    @SuppressWarnings("unchecked")
     public void testSplit() throws IOException {
         createIndex(
             "source",
@@ -981,11 +1038,8 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
         updateIndexSettings("source", Settings.builder().put("index.blocks.write", true));
 
         ResizeRequest resizeRequest = new ResizeRequest("target", "source");
-        resizeRequest.setResizeType(ResizeType.SPLIT);
         Settings targetSettings = Settings.builder().put("index.number_of_shards", 4).put("index.number_of_replicas", 0).build();
-        resizeRequest.setTargetIndex(
-            new org.opensearch.action.admin.indices.create.CreateIndexRequest("target").settings(targetSettings).alias(new Alias("alias"))
-        );
+        resizeRequest.setSettings(targetSettings).setAliases(List.of(new Alias("alias")));
         ResizeResponse resizeResponse = execute(resizeRequest, highLevelClient().indices()::split, highLevelClient().indices()::splitAsync);
         assertTrue(resizeResponse.isAcknowledged());
         assertTrue(resizeResponse.isShardsAcknowledged());
@@ -1011,11 +1065,8 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
         updateIndexSettings("source", Settings.builder().put("index.blocks.write", true));
 
         ResizeRequest resizeRequest = new ResizeRequest("target", "source");
-        resizeRequest.setResizeType(ResizeType.CLONE);
         Settings targetSettings = Settings.builder().put("index.number_of_shards", 2).put("index.number_of_replicas", 0).build();
-        resizeRequest.setTargetIndex(
-            new org.opensearch.action.admin.indices.create.CreateIndexRequest("target").settings(targetSettings).alias(new Alias("alias"))
-        );
+        resizeRequest.setSettings(targetSettings).setAliases(List.of(new Alias("alias")));
         ResizeResponse resizeResponse = execute(resizeRequest, highLevelClient().indices()::clone, highLevelClient().indices()::cloneAsync);
         assertTrue(resizeResponse.isAcknowledged());
         assertTrue(resizeResponse.isShardsAcknowledged());
@@ -1026,6 +1077,27 @@ public class IndicesClientIT extends OpenSearchRestHighLevelClientTestCase {
         assertEquals("0", indexSettings.get("number_of_replicas"));
         Map<String, Object> aliasData = (Map<String, Object>) XContentMapValues.extractValue("target.aliases.alias", getIndexResponse);
         assertNotNull(aliasData);
+    }
+
+    public void testSubmitCloneTask() throws Exception {
+        createIndex(
+            "source",
+            Settings.builder()
+                .put("index.number_of_shards", 2)
+                .put("index.number_of_replicas", 0)
+                .put("index.number_of_routing_shards", 4)
+                .build()
+        );
+        updateIndexSettings("source", Settings.builder().put("index.blocks.write", true));
+
+        ResizeRequest resizeRequest = new ResizeRequest("target", "source");
+        Settings targetSettings = Settings.builder().put("index.number_of_shards", 2).put("index.number_of_replicas", 0).build();
+        resizeRequest.setSettings(targetSettings);
+
+        TaskSubmissionResponse shrinkSubmission = highLevelClient().indices().submitCloneTask(resizeRequest, RequestOptions.DEFAULT);
+
+        String taskId = shrinkSubmission.getTask();
+        assertBusy(checkTaskCompletionStatus(client(), taskId));
     }
 
     public void testRollover() throws IOException {

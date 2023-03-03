@@ -1257,6 +1257,10 @@ final class RequestConverters {
             }
             return this;
         }
+
+        Params withTaskExecutionTimeout(TimeValue taskExecutionTimeout) {
+            return putParam("task_execution_timeout", taskExecutionTimeout);
+        }
     }
 
     /**

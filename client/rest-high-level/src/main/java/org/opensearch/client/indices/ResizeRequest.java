@@ -37,6 +37,7 @@ import org.opensearch.client.TimedRequest;
 import org.opensearch.client.Validatable;
 import org.opensearch.client.ValidationException;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.common.unit.ByteSizeValue;
@@ -60,6 +61,7 @@ public class ResizeRequest extends TimedRequest implements Validatable, ToXConte
     private Settings settings = Settings.EMPTY;
     private Set<Alias> aliases = new HashSet<>();
     private ByteSizeValue maxShardSize;
+    private TimeValue taskExecutionTimeout;
 
     /**
      * Creates a new resize request
@@ -173,6 +175,23 @@ public class ResizeRequest extends TimedRequest implements Validatable, ToXConte
      */
     public ByteSizeValue getMaxShardSize() {
         return maxShardSize;
+    }
+
+    /**
+     * Sets the execution timeout of the resize task, only useful when using submitShrinkTask/submitSplitTask/submitCloneTask
+     * to submit a resize task
+     *
+     * @param taskExecutionTimeout the execution timeout of the resize task
+     */
+    public void setTaskExecutionTimeout(TimeValue taskExecutionTimeout) {
+        this.taskExecutionTimeout = taskExecutionTimeout;
+    }
+
+    /**
+     * Returns the execution timeout of the resize task.
+     */
+    public TimeValue getTaskExecutionTimeout() {
+        return taskExecutionTimeout;
     }
 
     @Override

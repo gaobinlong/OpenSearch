@@ -122,6 +122,7 @@ public class RestHighLevelClientTests extends OpenSearchTestCase {
     private static final String SUBMIT_TASK_SUFFIX = "_task";
     private static final ProtocolVersion HTTP_PROTOCOL = new ProtocolVersion("http", 1, 1);
     private static final RequestLine REQUEST_LINE = new RequestLine(HttpGet.METHOD_NAME, "/", HTTP_PROTOCOL);
+    private static final String NAMESPACE_INDICES = "indices";
 
     /**
      * These APIs do not use a Request object (because they don't have a body, or any request parameters).
@@ -1093,7 +1094,10 @@ public class RestHighLevelClientTests extends OpenSearchTestCase {
     ) {
         String methodName = extractMethodName(apiName);
         final Class<?>[] parameterTypes = method.getParameterTypes();
-        assertTrue("submit task method [" + method.getName() + "] doesn't have corresponding sync method", methods.containsKey(methodName));
+        assertTrue(
+            "submit task method [" + method.getName() + "] doesn't have corresponding sync method",
+            methods.containsKey(methodName) || methods.containsKey(NAMESPACE_INDICES + "." + methodName)
+        );
         assertEquals("submit task method [" + method + "] has the wrong number of arguments", 2, method.getParameterCount());
         assertThat(
             "the first parameter to submit task method [" + method + "] is the wrong type",
@@ -1108,17 +1112,25 @@ public class RestHighLevelClientTests extends OpenSearchTestCase {
 
         assertThat(
             "submit task method [" + method + "] must have wait_for_completion parameter in rest spec",
-            restSpec.getApi(methodName).getParams(),
+            restSpec.getApi(methodName) != null
+                ? restSpec.getApi(methodName).getParams()
+                : restSpec.getApi(NAMESPACE_INDICES + "." + methodName).getParams(),
             Matchers.hasKey("wait_for_completion")
         );
     }
 
+    // ignores the `indices` prefix if the submit task method is contained in IndicesClient
     private static String extractMethodName(String apiName) {
-        return apiName.substring(SUBMIT_TASK_PREFIX.length(), apiName.length() - SUBMIT_TASK_SUFFIX.length());
+        return apiName.substring(
+            apiName.indexOf(SUBMIT_TASK_PREFIX) + SUBMIT_TASK_PREFIX.length(),
+            apiName.length() - SUBMIT_TASK_SUFFIX.length()
+        );
     }
 
+    // submit task methods are contained in both RestHighLevelClient and IndicesClient
     private static boolean isSubmitTaskMethod(String apiName) {
-        return apiName.startsWith(SUBMIT_TASK_PREFIX) && apiName.endsWith(SUBMIT_TASK_SUFFIX);
+        return (apiName.startsWith(SUBMIT_TASK_PREFIX) || apiName.startsWith(NAMESPACE_INDICES + "." + SUBMIT_TASK_PREFIX))
+            && apiName.endsWith(SUBMIT_TASK_SUFFIX);
     }
 
     private static Stream<Tuple<String, Method>> getSubClientMethods(String namespace, Class<?> clientClass) {

@@ -40,10 +40,6 @@ import org.opensearch.action.admin.indices.cache.clear.ClearIndicesCacheResponse
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.admin.indices.flush.FlushRequest;
 import org.opensearch.action.admin.indices.flush.FlushResponse;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse;
-import org.opensearch.action.admin.indices.open.OpenIndexRequest;
-import org.opensearch.action.admin.indices.open.OpenIndexResponse;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.admin.indices.refresh.RefreshResponse;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsRequest;
@@ -66,6 +62,8 @@ import org.opensearch.client.indices.DataStreamsStatsResponse;
 import org.opensearch.client.indices.DeleteAliasRequest;
 import org.opensearch.client.indices.DeleteComposableIndexTemplateRequest;
 import org.opensearch.client.indices.DeleteDataStreamRequest;
+import org.opensearch.client.indices.ForceMergeRequest;
+import org.opensearch.client.indices.ForceMergeResponse;
 import org.opensearch.client.indices.GetComposableIndexTemplateRequest;
 import org.opensearch.client.indices.GetComposableIndexTemplatesResponse;
 import org.opensearch.client.indices.GetDataStreamRequest;
@@ -79,6 +77,8 @@ import org.opensearch.client.indices.GetIndexTemplatesResponse;
 import org.opensearch.client.indices.GetMappingsRequest;
 import org.opensearch.client.indices.GetMappingsResponse;
 import org.opensearch.client.indices.IndexTemplatesExistRequest;
+import org.opensearch.client.indices.OpenIndexRequest;
+import org.opensearch.client.indices.OpenIndexResponse;
 import org.opensearch.client.indices.PutComposableIndexTemplateRequest;
 import org.opensearch.client.indices.PutIndexTemplateRequest;
 import org.opensearch.client.indices.PutMappingRequest;
@@ -88,6 +88,7 @@ import org.opensearch.client.indices.SimulateIndexTemplateRequest;
 import org.opensearch.client.indices.SimulateIndexTemplateResponse;
 import org.opensearch.client.indices.rollover.RolloverRequest;
 import org.opensearch.client.indices.rollover.RolloverResponse;
+import org.opensearch.client.tasks.TaskSubmissionResponse;
 import org.opensearch.rest.RestStatus;
 
 import java.io.IOException;
@@ -533,13 +534,18 @@ public final class IndicesClient {
      * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
      * @return the response
      * @throws IOException in case there is a problem sending the request or parsing back the response
+     * @deprecated use {@link #open(OpenIndexRequest, RequestOptions)}
      */
-    public OpenIndexResponse open(OpenIndexRequest openIndexRequest, RequestOptions options) throws IOException {
+    @Deprecated
+    public org.opensearch.action.admin.indices.open.OpenIndexResponse open(
+        org.opensearch.action.admin.indices.open.OpenIndexRequest openIndexRequest,
+        RequestOptions options
+    ) throws IOException {
         return restHighLevelClient.performRequestAndParseEntity(
             openIndexRequest,
             IndicesRequestConverters::openIndex,
             options,
-            OpenIndexResponse::fromXContent,
+            org.opensearch.action.admin.indices.open.OpenIndexResponse::fromXContent,
             emptySet()
         );
     }
@@ -551,14 +557,38 @@ public final class IndicesClient {
      * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
      * @param listener the listener to be notified upon request completion
      * @return cancellable that may be used to cancel the request
+     * @deprecated use {@link #openAsync(OpenIndexRequest, RequestOptions, ActionListener)}
      */
-    public Cancellable openAsync(OpenIndexRequest openIndexRequest, RequestOptions options, ActionListener<OpenIndexResponse> listener) {
+    @Deprecated
+    public Cancellable openAsync(
+        org.opensearch.action.admin.indices.open.OpenIndexRequest openIndexRequest,
+        RequestOptions options,
+        ActionListener<org.opensearch.action.admin.indices.open.OpenIndexResponse> listener
+    ) {
         return restHighLevelClient.performRequestAsyncAndParseEntity(
             openIndexRequest,
             IndicesRequestConverters::openIndex,
             options,
-            OpenIndexResponse::fromXContent,
+            org.opensearch.action.admin.indices.open.OpenIndexResponse::fromXContent,
             listener,
+            emptySet()
+        );
+    }
+
+    /**
+     * submit an opening index task using the Open Index API.
+     *
+     * @param openIndexRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the submission response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public TaskSubmissionResponse submitOpenTask(OpenIndexRequest openIndexRequest, RequestOptions options) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+            openIndexRequest,
+            IndicesRequestConverters::submitOpen,
+            options,
+            TaskSubmissionResponse::fromXContent,
             emptySet()
         );
     }
@@ -599,6 +629,43 @@ public final class IndicesClient {
             IndicesRequestConverters::closeIndex,
             options,
             CloseIndexResponse::fromXContent,
+            listener,
+            emptySet()
+        );
+    }
+
+    /**
+     * Opens one or more indices using the Open Index API.
+     *
+     * @param openIndexRequest the client side OpenIndexRequest
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the client side OpenIndexResponse
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public OpenIndexResponse open(OpenIndexRequest openIndexRequest, RequestOptions options) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+            openIndexRequest,
+            IndicesRequestConverters::openIndex,
+            options,
+            OpenIndexResponse::fromXContent,
+            emptySet()
+        );
+    }
+
+    /**
+     * Opens one or more indices using the Open Index API asynchronously.
+     *
+     * @param openIndexRequest the client side OpenIndexRequest
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @param listener the listener to be notified upon request completion
+     * @return cancellable that may be used to cancel the request
+     */
+    public Cancellable openAsync(OpenIndexRequest openIndexRequest, RequestOptions options, ActionListener<OpenIndexResponse> listener) {
+        return restHighLevelClient.performRequestAsyncAndParseEntity(
+            openIndexRequest,
+            IndicesRequestConverters::openIndex,
+            options,
+            OpenIndexResponse::fromXContent,
             listener,
             emptySet()
         );
@@ -803,8 +870,78 @@ public final class IndicesClient {
      * @deprecated use {@link #forcemerge(ForceMergeRequest, RequestOptions)} instead
      */
     @Deprecated
-    public ForceMergeResponse forceMerge(ForceMergeRequest forceMergeRequest, RequestOptions options) throws IOException {
+    public org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse forceMerge(
+        org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest forceMergeRequest,
+        RequestOptions options
+    ) throws IOException {
         return forcemerge(forceMergeRequest, options);
+    }
+
+    /**
+     * Force merge one or more indices using the Force Merge API.
+     *
+     * @param forceMergeRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     * @deprecated use {@link #forcemerge(ForceMergeRequest, RequestOptions)} instead
+     */
+    @Deprecated
+    public org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse forcemerge(
+        org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest forceMergeRequest,
+        RequestOptions options
+    ) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+            forceMergeRequest,
+            IndicesRequestConverters::forceMerge,
+            options,
+            org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse::fromXContent,
+            emptySet()
+        );
+    }
+
+    /**
+     * Asynchronously force merge one or more indices using the Force Merge API.
+     *
+     * @param forceMergeRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @param listener the listener to be notified upon request completion
+     * @deprecated use {@link #forcemergeAsync(ForceMergeRequest, RequestOptions, ActionListener)} instead
+     * @return cancellable that may be used to cancel the request
+     * @deprecated use {@link #forcemerge(ForceMergeRequest, RequestOptions)} instead
+     */
+    @Deprecated
+    public Cancellable forceMergeAsync(
+        org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest forceMergeRequest,
+        RequestOptions options,
+        ActionListener<org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse> listener
+    ) {
+        return forcemergeAsync(forceMergeRequest, options, listener);
+    }
+
+    /**
+     * Asynchronously force merge one or more indices using the Force Merge API.
+     *
+     * @param forceMergeRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @param listener the listener to be notified upon request completion
+     * @return cancellable that may be used to cancel the request
+     * @deprecated use {@link #forcemerge(ForceMergeRequest, RequestOptions)} instead
+     */
+    @Deprecated
+    public Cancellable forcemergeAsync(
+        org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest forceMergeRequest,
+        RequestOptions options,
+        ActionListener<org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse> listener
+    ) {
+        return restHighLevelClient.performRequestAsyncAndParseEntity(
+            forceMergeRequest,
+            IndicesRequestConverters::forceMerge,
+            options,
+            org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse::fromXContent,
+            listener,
+            emptySet()
+        );
     }
 
     /**
@@ -831,24 +968,6 @@ public final class IndicesClient {
      * @param forceMergeRequest the request
      * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
      * @param listener the listener to be notified upon request completion
-     * @deprecated use {@link #forcemergeAsync(ForceMergeRequest, RequestOptions, ActionListener)} instead
-     * @return cancellable that may be used to cancel the request
-     */
-    @Deprecated
-    public Cancellable forceMergeAsync(
-        ForceMergeRequest forceMergeRequest,
-        RequestOptions options,
-        ActionListener<ForceMergeResponse> listener
-    ) {
-        return forcemergeAsync(forceMergeRequest, options, listener);
-    }
-
-    /**
-     * Asynchronously force merge one or more indices using the Force Merge API.
-     *
-     * @param forceMergeRequest the request
-     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
-     * @param listener the listener to be notified upon request completion
      * @return cancellable that may be used to cancel the request
      */
     public Cancellable forcemergeAsync(
@@ -862,6 +981,24 @@ public final class IndicesClient {
             options,
             ForceMergeResponse::fromXContent,
             listener,
+            emptySet()
+        );
+    }
+
+    /**
+     * Submits a force-merge task using the force-merge API.
+     *
+     * @param forceMergeRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the submission response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public TaskSubmissionResponse submitForcemergeTask(ForceMergeRequest forceMergeRequest, RequestOptions options) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+            forceMergeRequest,
+            IndicesRequestConverters::submitForceMerge,
+            options,
+            TaskSubmissionResponse::fromXContent,
             emptySet()
         );
     }
@@ -1026,6 +1163,24 @@ public final class IndicesClient {
             options,
             org.opensearch.action.admin.indices.shrink.ResizeResponse::fromXContent,
             listener,
+            emptySet()
+        );
+    }
+
+    /**
+     * Submits a shrink task using the Shrink Index API.
+     *
+     * @param resizeRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the submission response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public TaskSubmissionResponse submitShrinkTask(ResizeRequest resizeRequest, RequestOptions options) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+            resizeRequest,
+            IndicesRequestConverters::submitShrink,
+            options,
+            TaskSubmissionResponse::fromXContent,
             emptySet()
         );
     }
@@ -1196,6 +1351,24 @@ public final class IndicesClient {
             options,
             org.opensearch.action.admin.indices.shrink.ResizeResponse::fromXContent,
             listener,
+            emptySet()
+        );
+    }
+
+    /**
+     * Submits a clone task using the Clone Index API.
+     *
+     * @param resizeRequest the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the submission response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public TaskSubmissionResponse submitCloneTask(ResizeRequest resizeRequest, RequestOptions options) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+            resizeRequest,
+            IndicesRequestConverters::submitClone,
+            options,
+            TaskSubmissionResponse::fromXContent,
             emptySet()
         );
     }

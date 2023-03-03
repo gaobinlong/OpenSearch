@@ -42,8 +42,6 @@ import org.opensearch.action.admin.indices.alias.get.GetAliasesRequest;
 import org.opensearch.action.admin.indices.cache.clear.ClearIndicesCacheRequest;
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.admin.indices.flush.FlushRequest;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest;
-import org.opensearch.action.admin.indices.open.OpenIndexRequest;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsRequest;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
@@ -52,22 +50,24 @@ import org.opensearch.action.admin.indices.template.delete.DeleteIndexTemplateRe
 import org.opensearch.action.admin.indices.validate.query.ValidateQueryRequest;
 import org.opensearch.client.indices.AnalyzeRequest;
 import org.opensearch.client.indices.CloseIndexRequest;
+import org.opensearch.client.indices.ComposableIndexTemplateExistRequest;
 import org.opensearch.client.indices.CreateDataStreamRequest;
 import org.opensearch.client.indices.CreateIndexRequest;
 import org.opensearch.client.indices.DataStreamsStatsRequest;
-import org.opensearch.client.indices.GetDataStreamRequest;
 import org.opensearch.client.indices.DeleteAliasRequest;
 import org.opensearch.client.indices.DeleteComposableIndexTemplateRequest;
 import org.opensearch.client.indices.DeleteDataStreamRequest;
+import org.opensearch.client.indices.ForceMergeRequest;
+import org.opensearch.client.indices.GetComposableIndexTemplateRequest;
+import org.opensearch.client.indices.GetDataStreamRequest;
 import org.opensearch.client.indices.GetFieldMappingsRequest;
 import org.opensearch.client.indices.GetIndexRequest;
-import org.opensearch.client.indices.GetComposableIndexTemplateRequest;
 import org.opensearch.client.indices.GetIndexTemplatesRequest;
 import org.opensearch.client.indices.GetMappingsRequest;
-import org.opensearch.client.indices.ComposableIndexTemplateExistRequest;
 import org.opensearch.client.indices.IndexTemplatesExistRequest;
-import org.opensearch.client.indices.PutIndexTemplateRequest;
+import org.opensearch.client.indices.OpenIndexRequest;
 import org.opensearch.client.indices.PutComposableIndexTemplateRequest;
+import org.opensearch.client.indices.PutIndexTemplateRequest;
 import org.opensearch.client.indices.PutMappingRequest;
 import org.opensearch.client.indices.ResizeRequest;
 import org.opensearch.client.indices.SimulateIndexTemplateRequest;
@@ -125,7 +125,8 @@ final class IndicesRequestConverters {
         return request;
     }
 
-    static Request openIndex(OpenIndexRequest openIndexRequest) {
+    @Deprecated
+    static Request openIndex(org.opensearch.action.admin.indices.open.OpenIndexRequest openIndexRequest) {
         String endpoint = RequestConverters.endpoint(openIndexRequest.indices(), "_open");
         Request request = new Request(HttpPost.METHOD_NAME, endpoint);
 
@@ -134,6 +135,31 @@ final class IndicesRequestConverters {
         parameters.withClusterManagerTimeout(openIndexRequest.clusterManagerNodeTimeout());
         parameters.withWaitForActiveShards(openIndexRequest.waitForActiveShards());
         parameters.withIndicesOptions(openIndexRequest.indicesOptions());
+        request.addParameters(parameters.asMap());
+        return request;
+    }
+
+    static Request openIndex(OpenIndexRequest openIndexRequest) {
+        return open(openIndexRequest, true);
+    }
+
+    static Request submitOpen(OpenIndexRequest openIndexRequest) {
+        return open(openIndexRequest, false);
+    }
+
+    static Request open(OpenIndexRequest openIndexRequest, boolean waitForCompletion) {
+        String endpoint = RequestConverters.endpoint(openIndexRequest.indices(), "_open");
+        Request request = new Request(HttpPost.METHOD_NAME, endpoint);
+
+        RequestConverters.Params parameters = new RequestConverters.Params();
+        parameters.withTimeout(openIndexRequest.timeout());
+        parameters.withClusterManagerTimeout(openIndexRequest.clusterManagerNodeTimeout());
+        parameters.withWaitForActiveShards(openIndexRequest.waitForActiveShards());
+        parameters.withIndicesOptions(openIndexRequest.indicesOptions());
+        if (waitForCompletion == false) {
+            parameters.withWaitForCompletion(false);
+            parameters.withTaskExecutionTimeout(openIndexRequest.timeout());
+        }
         request.addParameters(parameters.asMap());
         return request;
     }
@@ -240,7 +266,8 @@ final class IndicesRequestConverters {
         return request;
     }
 
-    static Request forceMerge(ForceMergeRequest forceMergeRequest) {
+    @Deprecated
+    static Request forceMerge(org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest forceMergeRequest) {
         String[] indices = forceMergeRequest.indices() == null ? Strings.EMPTY_ARRAY : forceMergeRequest.indices();
         Request request = new Request(HttpPost.METHOD_NAME, RequestConverters.endpoint(indices, "_forcemerge"));
 
@@ -249,6 +276,30 @@ final class IndicesRequestConverters {
         parameters.putParam("max_num_segments", Integer.toString(forceMergeRequest.maxNumSegments()));
         parameters.putParam("only_expunge_deletes", Boolean.toString(forceMergeRequest.onlyExpungeDeletes()));
         parameters.putParam("flush", Boolean.toString(forceMergeRequest.flush()));
+        request.addParameters(parameters.asMap());
+        return request;
+    }
+
+    static Request submitForceMerge(ForceMergeRequest forceMergeRequest) {
+        return forceMergeIndex(forceMergeRequest, false);
+    }
+
+    static Request forceMerge(ForceMergeRequest forceMergeRequest) {
+        return forceMergeIndex(forceMergeRequest, true);
+    }
+
+    static Request forceMergeIndex(ForceMergeRequest forceMergeRequest, boolean waitForCompletion) {
+        String[] indices = forceMergeRequest.indices() == null ? Strings.EMPTY_ARRAY : forceMergeRequest.indices();
+        Request request = new Request(HttpPost.METHOD_NAME, RequestConverters.endpoint(indices, "_forcemerge"));
+
+        RequestConverters.Params parameters = new RequestConverters.Params();
+        parameters.withIndicesOptions(forceMergeRequest.indicesOptions());
+        parameters.putParam("max_num_segments", Integer.toString(forceMergeRequest.maxNumSegments()));
+        parameters.putParam("only_expunge_deletes", Boolean.toString(forceMergeRequest.onlyExpungeDeletes()));
+        parameters.putParam("flush", Boolean.toString(forceMergeRequest.flush()));
+        if (waitForCompletion == false) {
+            parameters.withWaitForCompletion(false);
+        }
         request.addParameters(parameters.asMap());
         return request;
     }
@@ -288,7 +339,14 @@ final class IndicesRequestConverters {
         if (IndexMetadata.INDEX_NUMBER_OF_SHARDS_SETTING.exists(resizeRequest.getSettings()) == false) {
             throw new IllegalArgumentException("index.number_of_shards is required for split operations");
         }
-        return resize(resizeRequest, ResizeType.SPLIT);
+        return resize(resizeRequest, ResizeType.SPLIT, true);
+    }
+
+    static Request submitSplit(ResizeRequest resizeRequest) throws IOException {
+        if (IndexMetadata.INDEX_NUMBER_OF_SHARDS_SETTING.exists(resizeRequest.getSettings()) == false) {
+            throw new IllegalArgumentException("index.number_of_shards is required for split operations");
+        }
+        return resize(resizeRequest, ResizeType.SPLIT, false);
     }
 
     @Deprecated
@@ -300,7 +358,11 @@ final class IndicesRequestConverters {
     }
 
     static Request shrink(ResizeRequest resizeRequest) throws IOException {
-        return resize(resizeRequest, ResizeType.SHRINK);
+        return resize(resizeRequest, ResizeType.SHRINK, true);
+    }
+
+    static Request submitShrink(ResizeRequest resizeRequest) throws IOException {
+        return resize(resizeRequest, ResizeType.SHRINK, false);
     }
 
     @Deprecated
@@ -312,7 +374,11 @@ final class IndicesRequestConverters {
     }
 
     static Request clone(ResizeRequest resizeRequest) throws IOException {
-        return resize(resizeRequest, ResizeType.CLONE);
+        return resize(resizeRequest, ResizeType.CLONE, true);
+    }
+
+    static Request submitClone(ResizeRequest resizeRequest) throws IOException {
+        return resize(resizeRequest, ResizeType.CLONE, false);
     }
 
     @Deprecated
@@ -323,7 +389,7 @@ final class IndicesRequestConverters {
         return resize(resizeRequest);
     }
 
-    private static Request resize(ResizeRequest resizeRequest, ResizeType type) throws IOException {
+    private static Request resize(ResizeRequest resizeRequest, ResizeType type, boolean waitForCompletion) throws IOException {
         String endpoint = new RequestConverters.EndpointBuilder().addPathPart(resizeRequest.getSourceIndex())
             .addPathPartAsIs("_" + type.name().toLowerCase(Locale.ROOT))
             .addPathPart(resizeRequest.getTargetIndex())
@@ -334,6 +400,10 @@ final class IndicesRequestConverters {
         params.withTimeout(resizeRequest.timeout());
         params.withClusterManagerTimeout(resizeRequest.clusterManagerNodeTimeout());
         params.withWaitForActiveShards(resizeRequest.getWaitForActiveShards());
+        if (waitForCompletion == false) {
+            params.withWaitForCompletion(false);
+            params.withTaskExecutionTimeout(resizeRequest.getTaskExecutionTimeout());
+        }
         request.addParameters(params.asMap());
         request.setEntity(RequestConverters.createEntity(resizeRequest, RequestConverters.REQUEST_BODY_CONTENT_TYPE));
         return request;

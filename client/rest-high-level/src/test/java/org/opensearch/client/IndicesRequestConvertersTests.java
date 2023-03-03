@@ -45,8 +45,6 @@ import org.opensearch.action.admin.indices.alias.get.GetAliasesRequest;
 import org.opensearch.action.admin.indices.cache.clear.ClearIndicesCacheRequest;
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.admin.indices.flush.FlushRequest;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest;
-import org.opensearch.action.admin.indices.open.OpenIndexRequest;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsRequest;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
@@ -60,12 +58,14 @@ import org.opensearch.client.indices.CreateDataStreamRequest;
 import org.opensearch.client.indices.CreateIndexRequest;
 import org.opensearch.client.indices.DeleteAliasRequest;
 import org.opensearch.client.indices.DeleteDataStreamRequest;
+import org.opensearch.client.indices.ForceMergeRequest;
 import org.opensearch.client.indices.GetDataStreamRequest;
 import org.opensearch.client.indices.GetFieldMappingsRequest;
 import org.opensearch.client.indices.GetIndexRequest;
 import org.opensearch.client.indices.GetIndexTemplatesRequest;
 import org.opensearch.client.indices.GetMappingsRequest;
 import org.opensearch.client.indices.IndexTemplatesExistRequest;
+import org.opensearch.client.indices.OpenIndexRequest;
 import org.opensearch.client.indices.PutIndexTemplateRequest;
 import org.opensearch.client.indices.PutMappingRequest;
 import org.opensearch.client.indices.RandomCreateIndexGenerator;
@@ -87,6 +87,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
@@ -422,25 +423,24 @@ public class IndicesRequestConvertersTests extends OpenSearchTestCase {
     public void testOpenIndex() {
         String[] indices = RequestConvertersTests.randomIndicesNames(1, 5);
         OpenIndexRequest openIndexRequest = new OpenIndexRequest(indices);
-        openIndexRequest.indices(indices);
 
         Map<String, String> expectedParams = new HashMap<>();
-        RequestConvertersTests.setRandomTimeout(openIndexRequest::timeout, AcknowledgedRequest.DEFAULT_ACK_TIMEOUT, expectedParams);
+        RequestConvertersTests.setRandomTimeout(openIndexRequest, AcknowledgedRequest.DEFAULT_ACK_TIMEOUT, expectedParams);
         RequestConvertersTests.setRandomClusterManagerTimeout(openIndexRequest, expectedParams);
         RequestConvertersTests.setRandomIndicesOptions(openIndexRequest::indicesOptions, openIndexRequest::indicesOptions, expectedParams);
         RequestConvertersTests.setRandomWaitForActiveShards(openIndexRequest::waitForActiveShards, expectedParams);
 
         Request request = IndicesRequestConverters.openIndex(openIndexRequest);
         StringJoiner endpoint = new StringJoiner("/", "/", "").add(String.join(",", indices)).add("_open");
-        Assert.assertThat(endpoint.toString(), equalTo(request.getEndpoint()));
-        Assert.assertThat(expectedParams, equalTo(request.getParameters()));
-        Assert.assertThat(request.getMethod(), equalTo(HttpPost.METHOD_NAME));
-        Assert.assertThat(request.getEntity(), nullValue());
+        Assert.assertEquals(endpoint.toString(), request.getEndpoint());
+        Assert.assertEquals(expectedParams, request.getParameters());
+        Assert.assertEquals(request.getMethod(), HttpPost.METHOD_NAME);
+        Assert.assertNull(request.getEntity());
     }
 
     public void testOpenIndexEmptyIndices() {
         String[] indices = OpenSearchTestCase.randomBoolean() ? null : Strings.EMPTY_ARRAY;
-        ActionRequestValidationException validationException = new OpenIndexRequest(indices).validate();
+        Optional<ValidationException> validationException = new OpenIndexRequest(indices).validate();
         Assert.assertNotNull(validationException);
     }
 
@@ -527,12 +527,7 @@ public class IndicesRequestConvertersTests extends OpenSearchTestCase {
     public void testForceMerge() {
         String[] indices = OpenSearchTestCase.randomBoolean() ? null : RequestConvertersTests.randomIndicesNames(0, 5);
         ForceMergeRequest forceMergeRequest;
-        if (OpenSearchTestCase.randomBoolean()) {
-            forceMergeRequest = new ForceMergeRequest(indices);
-        } else {
-            forceMergeRequest = new ForceMergeRequest();
-            forceMergeRequest.indices(indices);
-        }
+        forceMergeRequest = new ForceMergeRequest(indices);
 
         Map<String, String> expectedParams = new HashMap<>();
         RequestConvertersTests.setRandomIndicesOptions(
@@ -559,10 +554,10 @@ public class IndicesRequestConvertersTests extends OpenSearchTestCase {
             endpoint.add(String.join(",", indices));
         }
         endpoint.add("_forcemerge");
-        Assert.assertThat(request.getEndpoint(), equalTo(endpoint.toString()));
-        Assert.assertThat(request.getParameters(), equalTo(expectedParams));
-        Assert.assertThat(request.getEntity(), nullValue());
-        Assert.assertThat(request.getMethod(), equalTo(HttpPost.METHOD_NAME));
+        Assert.assertEquals(request.getEndpoint(), endpoint.toString());
+        Assert.assertEquals(request.getParameters(), expectedParams);
+        Assert.assertNull(request.getEntity());
+        Assert.assertEquals(request.getMethod(), HttpPost.METHOD_NAME);
     }
 
     public void testClearCache() {

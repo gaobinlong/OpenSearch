@@ -44,18 +44,11 @@ import org.opensearch.action.admin.indices.cache.clear.ClearIndicesCacheResponse
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.admin.indices.flush.FlushRequest;
 import org.opensearch.action.admin.indices.flush.FlushResponse;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest;
-import org.opensearch.action.admin.indices.forcemerge.ForceMergeResponse;
-import org.opensearch.action.admin.indices.open.OpenIndexRequest;
-import org.opensearch.action.admin.indices.open.OpenIndexResponse;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.admin.indices.refresh.RefreshResponse;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsRequest;
 import org.opensearch.action.admin.indices.settings.get.GetSettingsResponse;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
-import org.opensearch.action.admin.indices.shrink.ResizeRequest;
-import org.opensearch.action.admin.indices.shrink.ResizeResponse;
-import org.opensearch.action.admin.indices.shrink.ResizeType;
 import org.opensearch.action.admin.indices.template.delete.DeleteIndexTemplateRequest;
 import org.opensearch.action.admin.indices.validate.query.QueryExplanation;
 import org.opensearch.action.admin.indices.validate.query.ValidateQueryRequest;
@@ -77,6 +70,8 @@ import org.opensearch.client.indices.CreateIndexResponse;
 import org.opensearch.client.indices.DeleteAliasRequest;
 import org.opensearch.client.indices.DeleteComposableIndexTemplateRequest;
 import org.opensearch.client.indices.DetailAnalyzeResponse;
+import org.opensearch.client.indices.ForceMergeRequest;
+import org.opensearch.client.indices.ForceMergeResponse;
 import org.opensearch.client.indices.GetFieldMappingsRequest;
 import org.opensearch.client.indices.GetFieldMappingsResponse;
 import org.opensearch.client.indices.GetIndexRequest;
@@ -89,10 +84,14 @@ import org.opensearch.client.indices.GetMappingsRequest;
 import org.opensearch.client.indices.GetMappingsResponse;
 import org.opensearch.client.indices.IndexTemplateMetadata;
 import org.opensearch.client.indices.IndexTemplatesExistRequest;
+import org.opensearch.client.indices.OpenIndexRequest;
+import org.opensearch.client.indices.OpenIndexResponse;
 import org.opensearch.client.indices.PutComponentTemplateRequest;
 import org.opensearch.client.indices.PutIndexTemplateRequest;
 import org.opensearch.client.indices.PutComposableIndexTemplateRequest;
 import org.opensearch.client.indices.PutMappingRequest;
+import org.opensearch.client.indices.ResizeRequest;
+import org.opensearch.client.indices.ResizeResponse;
 import org.opensearch.client.indices.SimulateIndexTemplateRequest;
 import org.opensearch.client.indices.SimulateIndexTemplateResponse;
 import org.opensearch.client.indices.rollover.RolloverRequest;
@@ -797,15 +796,12 @@ public class IndicesClientDocumentationIT extends OpenSearchRestHighLevelClientT
             // end::open-index-request
 
             // tag::open-index-request-timeout
-            request.timeout(TimeValue.timeValueMinutes(2)); // <1>
-            request.timeout("2m"); // <2>
+            request.setTimeout(TimeValue.timeValueMinutes(2)); // <1>
             // end::open-index-request-timeout
             // tag::open-index-request-masterTimeout
-            request.clusterManagerNodeTimeout(TimeValue.timeValueMinutes(1)); // <1>
-            request.clusterManagerNodeTimeout("1m"); // <2>
+            request.setClusterManagerTimeout(TimeValue.timeValueMinutes(1)); // <1>
             // end::open-index-request-masterTimeout
             // tag::open-index-request-waitForActiveShards
-            request.waitForActiveShards(2); // <1>
             request.waitForActiveShards(ActiveShardCount.DEFAULT); // <2>
             // end::open-index-request-waitForActiveShards
 
@@ -1234,10 +1230,10 @@ public class IndicesClientDocumentationIT extends OpenSearchRestHighLevelClientT
             // end::force-merge-execute
 
             // tag::force-merge-response
-            int totalShards = forceMergeResponse.getTotalShards(); // <1>
-            int successfulShards = forceMergeResponse.getSuccessfulShards(); // <2>
-            int failedShards = forceMergeResponse.getFailedShards(); // <3>
-            DefaultShardOperationFailedException[] failures = forceMergeResponse.getShardFailures(); // <4>
+            int totalShards = forceMergeResponse.shards().total(); // <1>
+            int successfulShards = forceMergeResponse.shards().successful(); // <2>
+            int failedShards = forceMergeResponse.shards().failed(); // <3>
+            DefaultShardOperationFailedException[] failures = forceMergeResponse.shards().failures().toArray(new DefaultShardOperationFailedException[0]); // <4>
             // end::force-merge-response
 
             // tag::force-merge-execute-listener
@@ -1596,24 +1592,22 @@ public class IndicesClientDocumentationIT extends OpenSearchRestHighLevelClientT
         // end::shrink-index-request
 
         // tag::shrink-index-request-timeout
-        request.timeout(TimeValue.timeValueMinutes(2)); // <1>
-        request.timeout("2m"); // <2>
+        request.setTimeout(TimeValue.timeValueMinutes(2)); // <1>
         // end::shrink-index-request-timeout
         // tag::shrink-index-request-masterTimeout
-        request.clusterManagerNodeTimeout(TimeValue.timeValueMinutes(1)); // <1>
-        request.clusterManagerNodeTimeout("1m"); // <2>
+        request.setClusterManagerTimeout(TimeValue.timeValueMinutes(1)); // <1>
         // end::shrink-index-request-masterTimeout
         // tag::shrink-index-request-waitForActiveShards
         request.setWaitForActiveShards(2); // <1>
         request.setWaitForActiveShards(ActiveShardCount.DEFAULT); // <2>
         // end::shrink-index-request-waitForActiveShards
         // tag::shrink-index-request-settings
-        request.getTargetIndexRequest().settings(Settings.builder()
+        request.setSettings(Settings.builder()
                 .put("index.number_of_shards", 2) // <1>
-                .putNull("index.routing.allocation.require._name")); // <2>
+                .putNull("index.routing.allocation.require._name").build()); // <2>
         // end::shrink-index-request-settings
         // tag::shrink-index-request-aliases
-        request.getTargetIndexRequest().alias(new Alias("target_alias")); // <1>
+        request.setAliases(List.of(new Alias("target_alias"))); // <1>
         // end::shrink-index-request-aliases
 
         // tag::shrink-index-execute
@@ -1669,27 +1663,24 @@ public class IndicesClientDocumentationIT extends OpenSearchRestHighLevelClientT
 
         // tag::split-index-request
         ResizeRequest request = new ResizeRequest("target_index","source_index"); // <1>
-        request.setResizeType(ResizeType.SPLIT); // <2>
         // end::split-index-request
 
         // tag::split-index-request-timeout
-        request.timeout(TimeValue.timeValueMinutes(2)); // <1>
-        request.timeout("2m"); // <2>
+        request.setTimeout(TimeValue.timeValueMinutes(2)); // <1>
         // end::split-index-request-timeout
         // tag::split-index-request-masterTimeout
-        request.clusterManagerNodeTimeout(TimeValue.timeValueMinutes(1)); // <1>
-        request.clusterManagerNodeTimeout("1m"); // <2>
+        request.setClusterManagerTimeout(TimeValue.timeValueMinutes(1)); // <1>
         // end::split-index-request-masterTimeout
         // tag::split-index-request-waitForActiveShards
         request.setWaitForActiveShards(2); // <1>
         request.setWaitForActiveShards(ActiveShardCount.DEFAULT); // <2>
         // end::split-index-request-waitForActiveShards
         // tag::split-index-request-settings
-        request.getTargetIndexRequest().settings(Settings.builder()
-                .put("index.number_of_shards", 4)); // <1>
+        request.setSettings(Settings.builder()
+                .put("index.number_of_shards", 4).build()); // <1>
         // end::split-index-request-settings
         // tag::split-index-request-aliases
-        request.getTargetIndexRequest().alias(new Alias("target_alias")); // <1>
+        request.setAliases(List.of(new Alias("target_alias"))); // <1>
         // end::split-index-request-aliases
 
         // tag::split-index-execute
@@ -1738,27 +1729,24 @@ public class IndicesClientDocumentationIT extends OpenSearchRestHighLevelClientT
 
         // tag::clone-index-request
         ResizeRequest request = new ResizeRequest("target_index","source_index"); // <1>
-        request.setResizeType(ResizeType.CLONE); // <2>
         // end::clone-index-request
 
         // tag::clone-index-request-timeout
-        request.timeout(TimeValue.timeValueMinutes(2)); // <1>
-        request.timeout("2m"); // <2>
+        request.setTimeout(TimeValue.timeValueMinutes(2)); // <1>
         // end::clone-index-request-timeout
         // tag::clone-index-request-masterTimeout
-        request.clusterManagerNodeTimeout(TimeValue.timeValueMinutes(1)); // <1>
-        request.clusterManagerNodeTimeout("1m"); // <2>
+        request.setClusterManagerTimeout(TimeValue.timeValueMinutes(1)); // <1>
         // end::clone-index-request-masterTimeout
         // tag::clone-index-request-waitForActiveShards
         request.setWaitForActiveShards(2); // <1>
         request.setWaitForActiveShards(ActiveShardCount.DEFAULT); // <2>
         // end::clone-index-request-waitForActiveShards
         // tag::clone-index-request-settings
-        request.getTargetIndexRequest().settings(Settings.builder()
-            .put("index.number_of_shards", 2)); // <1>
+        request.setSettings(Settings.builder()
+            .put("index.number_of_shards", 2).build()); // <1>
         // end::clone-index-request-settings
         // tag::clone-index-request-aliases
-        request.getTargetIndexRequest().alias(new Alias("target_alias")); // <1>
+        request.setAliases(List.of(new Alias("target_alias"))); // <1>
         // end::clone-index-request-aliases
 
         // tag::clone-index-execute
