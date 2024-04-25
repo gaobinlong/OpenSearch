@@ -72,6 +72,33 @@ teardown:
               foo: bar
 
   - match: {hits.total.value: 4}
+  - length: { hits.hits: 4 }
+
+  - do:
+      search:
+        index: test_1
+        from: 0
+        size: 0
+        body:
+          query:
+            match:
+              foo: bar
+
+  - match: {hits.total.value: 4}
+  - length: { hits.hits: 0 }
+
+  - do:
+      search:
+        index: test_1
+        from: 10
+        size: 0
+        body:
+          query:
+            match:
+              foo: bar
+
+  - match: {hits.total.value: 4}
+  - length: { hits.hits: 0 }
 
 ---
 "Throws exception if from or size request body parameter is negative":
@@ -111,3 +138,30 @@ teardown:
               foo: bar
 
   - match: {hits.total.value: 4}
+  - length: { hits.hits: 4 }
+
+  - do:
+      search:
+        index: test_1
+        body:
+          from: 0
+          size: 0
+          query:
+            match:
+              foo: bar
+
+  - match: {hits.total.value: 4}
+  - length: { hits.hits: 0 }
+
+  - do:
+      search:
+        index: test_1
+        body:
+          from: 10
+          size: 0
+          query:
+            match:
+              foo: bar
+
+  - match: {hits.total.value: 4}
+  - length: { hits.hits: 0 }
