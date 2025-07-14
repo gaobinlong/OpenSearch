@@ -3,11 +3,11 @@ on: [pull_request]
 
 jobs:
   assemble:
-    if: github.repository == 'opensearch-project/OpenSearch'
+    if: github.repository == 'gaobinlong/OpenSearch'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        java: [ 21, 23 ]
+        java: [ 21, 23, 24 ]
         os: [ubuntu-latest, windows-latest, macos-13, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
