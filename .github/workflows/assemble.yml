@@ -3,7 +3,7 @@ on: [pull_request]
 
 jobs:
   assemble:
-    if: github.repository == 'opensearch-project/OpenSearch'
+    if: github.repository == 'gaobinlong/OpenSearch'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
